@@ -1,5 +1,7 @@
 import os
+import re
 from pathlib import Path
+from typing import Optional
 import requests
 import streamlit as st
 from tensorflow.keras.models import load_model
@@ -17,7 +19,7 @@ def weighted_loss(y_true, y_pred):
     bce = tf.keras.losses.binary_crossentropy(y_true, y_pred)
     return tf.reduce_mean(bce * weights)
 
-def _get_model_url() -> str | None:
+def _get_model_url() -> Optional[str]:
     """Resolve the model URL from Streamlit secrets or environment variable."""
     # Prefer Streamlit secrets in Cloud
     try:
@@ -29,7 +31,56 @@ def _get_model_url() -> str | None:
     return os.getenv("MODEL_URL")
 
 
-def ensure_model_file(path: str = "face_mask_model_fn.keras") -> str | None:
+def _normalize_model_url(url: str) -> str:
+    """Normalize common share links to direct-download URLs.
+
+    Supports:
+    - GitHub: /raw/ and /blob/ links -> raw.githubusercontent.com
+    - Dropbox: dl=0 -> dl=1
+    - Google Drive: /file/d/<id>/view -> uc?export=download&id=<id>
+    - OneDrive: append download=1 when missing
+    """
+    try:
+        u = url
+        # GitHub raw or blob links
+        if "github.com" in u:
+            # Examples:
+            # https://github.com/owner/repo/raw/branch/path -> https://raw.githubusercontent.com/owner/repo/branch/path
+            m = re.match(r"https?://github\.com/([^/]+)/([^/]+)/(raw|blob)/([^/]+)/(.*)", u)
+            if m:
+                owner, repo, _, branch, path = m.groups()
+                return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+        # Dropbox
+        if "dropbox.com" in u:
+            if "dl=0" in u:
+                u = u.replace("dl=0", "dl=1")
+            elif "?" in u and "dl=" not in u:
+                u = u + "&dl=1"
+            elif "dl=" not in u:
+                u = u + "?dl=1"
+            return u
+        # Google Drive (file link)
+        if "drive.google.com" in u:
+            m = re.search(r"/file/d/([^/]+)/", u)
+            if m:
+                file_id = m.group(1)
+                return f"https://drive.google.com/uc?export=download&id={file_id}"
+            # open?id= style
+            m = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", u)
+            if m:
+                file_id = m.group(1)
+                return f"https://drive.google.com/uc?export=download&id={file_id}"
+        # OneDrive basic handling
+        if "onedrive.live.com" in u or "1drv.ms" in u:
+            if "download=1" not in u:
+                sep = "&" if "?" in u else "?"
+                return u + f"{sep}download=1"
+        return u
+    except Exception:
+        return url
+
+
+def ensure_model_file(path: str = "face_mask_model_fn.keras") -> Optional[str]:
     """Ensure the model file exists locally; download it if a URL is provided.
 
     Returns the local path if available or downloaded, else None.
@@ -47,8 +98,9 @@ def ensure_model_file(path: str = "face_mask_model_fn.keras") -> str | None:
         return None
 
     try:
+        url = _normalize_model_url(url)
         st.info("Downloading model… this happens only once per deployment.")
-        with requests.get(url, stream=True, timeout=60) as r:
+        with requests.get(url, stream=True, timeout=300) as r:
             r.raise_for_status()
             total = int(r.headers.get("content-length", 0))
             tmp_path = f"{path}.part"
@@ -59,9 +111,13 @@ def ensure_model_file(path: str = "face_mask_model_fn.keras") -> str | None:
                     if not chunk:
                         continue
                     f.write(chunk)
+                    dl += len(chunk)
                     if total:
-                        dl += len(chunk)
                         progress.progress(min(100, int(dl * 100 / total)))
+                    else:
+                        # Best-effort progress for unknown content-length
+                        if dl % (1024 * 1024) < 8192:  # roughly every ~1MB
+                            progress.progress(min(100, (dl // (1024 * 1024)) % 100))
             progress.empty()
             os.replace(tmp_path, path)
         st.success("✅ Model downloaded.")
