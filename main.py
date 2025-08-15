@@ -134,25 +134,22 @@ def ensure_model_file(path: str = "face_mask_model_fn.keras") -> Optional[str]:
         return None
 
 
-# Load Model
 @st.cache_resource
-def load_mask_model():
-    try:
-        model_path = ensure_model_file("face_mask_model_fn.keras")
-        if not model_path:
+def _load_model_cached(model_path: str):
+    return load_model(model_path, custom_objects={'weighted_loss': weighted_loss})
 
-            return None
-        model = load_model(
-            model_path,
-            custom_objects={'weighted_loss': weighted_loss}
-        )
+
+# Resolve/download model path first; then cache the loaded model
+try:
+    _model_path = ensure_model_file("face_mask_model_fn.keras")
+    if _model_path:
+        model = _load_model_cached(_model_path)
         st.success("✅ Model loaded successfully!")
-        return model
-    except Exception as e:
-        st.error(f"❌ Model loading failed: {str(e)}")
-        return None
-
-model = load_mask_model()
+    else:
+        model = None
+except Exception as e:
+    st.error(f"❌ Model loading failed: {str(e)}")
+    model = None
 
 # Streamlit app layout
 st.title("Face Mask Detection 😷")
