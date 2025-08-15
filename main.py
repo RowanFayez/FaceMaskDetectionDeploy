@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+import requests
 import streamlit as st
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
@@ -14,12 +17,72 @@ def weighted_loss(y_true, y_pred):
     bce = tf.keras.losses.binary_crossentropy(y_true, y_pred)
     return tf.reduce_mean(bce * weights)
 
+def _get_model_url() -> str | None:
+    """Resolve the model URL from Streamlit secrets or environment variable."""
+    # Prefer Streamlit secrets in Cloud
+    try:
+        if hasattr(st, "secrets") and "MODEL_URL" in st.secrets:
+            return st.secrets["MODEL_URL"]
+    except Exception:
+        pass
+    # Fallback to environment variable for local/dev
+    return os.getenv("MODEL_URL")
+
+
+def ensure_model_file(path: str = "face_mask_model_fn.keras") -> str | None:
+    """Ensure the model file exists locally; download it if a URL is provided.
+
+    Returns the local path if available or downloaded, else None.
+    """
+    path = str(Path(path))
+    if os.path.exists(path):
+        return path
+
+    url = _get_model_url()
+    if not url:
+        st.error(
+            "Model file not found and no MODEL_URL provided. "
+            "Add MODEL_URL to Streamlit secrets (or env) pointing to the .keras file."
+        )
+        return None
+
+    try:
+        st.info("Downloading model… this happens only once per deployment.")
+        with requests.get(url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0))
+            tmp_path = f"{path}.part"
+            dl = 0
+            progress = st.progress(0, text="Downloading model")
+            with open(tmp_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    if total:
+                        dl += len(chunk)
+                        progress.progress(min(100, int(dl * 100 / total)))
+            progress.empty()
+            os.replace(tmp_path, path)
+        st.success("✅ Model downloaded.")
+        return path
+    except Exception as e:
+        st.error(f"❌ Failed to download model: {e}")
+        return None
+
+
 # Load Model
 @st.cache_resource
 def load_mask_model():
     try:
-        model = load_model("face_mask_model_fn.keras",
-                         custom_objects={'weighted_loss': weighted_loss})
+        model_path = ensure_model_file("face_mask_model_fn.keras")
+        if not model_path:
+
+            return None
+        model = load_model(
+            model_path,
+            custom_objects={'weighted_loss': weighted_loss}
+        )
         st.success("✅ Model loaded successfully!")
         return model
     except Exception as e:
