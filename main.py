@@ -27,6 +27,13 @@ def _get_model_url() -> Optional[str]:
             return st.secrets["MODEL_URL"]
     except Exception:
         pass
+    # Optional: sidebar override for quick fixes (not persisted across deploys)
+    try:
+        pasted = st.session_state.get("MODEL_URL_INPUT")
+        if pasted:
+            return str(pasted).strip()
+    except Exception:
+        pass
     # Fallback to environment variable for local/dev
     return os.getenv("MODEL_URL")
 
@@ -150,6 +157,18 @@ model = load_mask_model()
 # Streamlit app layout
 st.title("Face Mask Detection 😷")
 st.write("Upload an image to check if the person is wearing a mask")
+
+# Sidebar helper: allow pasting MODEL_URL manually if secrets/env missing
+with st.sidebar.expander("Model settings", expanded=False):
+    st.caption(
+        "If deployment secrets aren't configured, paste a direct download link to the .keras file here."
+    )
+    st.text_input(
+        "MODEL_URL (optional)",
+        key="MODEL_URL_INPUT",
+        placeholder="https://.../face_mask_model_fn.keras",
+        help="Supports GitHub raw, Dropbox (?dl=1), Google Drive (uc?export=download), OneDrive (download=1)"
+    )
 
 uploaded_file = st.file_uploader(
     "Choose an image...", 
