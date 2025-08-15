@@ -1,0 +1,72 @@
+ # Python bytecode and caches
+ __pycache__/
+ *.py[cod]
+ *.pyo
+ *.pyd
+
+ # Virtual environments
+ venv/
+ .env/
+ .env*/
+ .venv/
+ .venv*/
+ ENV/
+ env/
+ env*/
+ venv*/
+ # Specific local venv in this project
+ facemask/
+
+ # Build and packaging
+ build/
+ dist/
+ *.egg-info/
+ .eggs/
+
+ # Tools and caches
+ .pytest_cache/
+ .mypy_cache/
+ .cache/
+ .ipynb_checkpoints/
+
+ # Editors/IDE
+ .vscode/
+ .idea/
+ *.code-workspace
+
+ # OS files
+ .DS_Store
+ Thumbs.db
+
+ # Streamlit
+ .streamlit/
+
+ # Logs and temp
+ *.log
+ *.tmp
+ *.temp
+
+ # Data dumps
+ *.csv
+ *.tsv
+ *.parquet
+ *.feather
+ *.npy
+ *.npz
+ *.pickle
+ *.pkl
+ *.joblib
+
+ # Large ML/Model artifacts (keep these out of git)
+ *.keras
+ *.h5
+ *.hdf5
+ *.pb
+ *.tflite
+ *.ckpt
+ *.onnx
+ *.pth
+
+ # TensorFlow saved models and checkpoints
+ checkpoints/
+ saved_model/
